@@ -16,14 +16,11 @@
 
 package com.google.android.setupdesign.items;
 
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
-import android.os.Build;
-import android.os.Build.VERSION_CODES;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -33,6 +30,8 @@ import android.widget.LinearLayout;
 import com.google.android.setupcompat.partnerconfig.PartnerConfig;
 import com.google.android.setupcompat.partnerconfig.PartnerConfigHelper;
 import com.google.android.setupdesign.R;
+import com.google.android.setupdesign.util.ItemStyler;
+import com.google.android.setupdesign.view.StickyHeaderListView;
 
 /**
  * An adapter typically used with ListView to display an {@link
@@ -44,10 +43,16 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
   private final ItemHierarchy itemHierarchy;
   private final ViewTypes viewTypes = new ViewTypes();
 
+  private View listView = null;
+
   public ItemAdapter(ItemHierarchy hierarchy) {
     itemHierarchy = hierarchy;
     itemHierarchy.registerObserver(this);
     refreshViewTypes();
+  }
+
+  public void setListView(View listView) {
+    this.listView = listView;
   }
 
   @Override
@@ -84,36 +89,53 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
     }
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getFirstBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundFirst});
+  private Drawable getFirstBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+            .getTheme()
+            .obtainStyledAttributes(
+                item.isActionable()
+                    ? new int[] {R.attr.sudItemBackgroundFirst}
+                    : new int[] {R.attr.sudNonActionableItemBackgroundFirst});
     Drawable firstBackground = a.getDrawable(0);
     a.recycle();
     return firstBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getLastBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundLast});
+  private Drawable getLastBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+            .getTheme()
+            .obtainStyledAttributes(
+                item.isActionable()
+                    ? new int[] {R.attr.sudItemBackgroundLast}
+                    : new int[] {R.attr.sudNonActionableItemBackgroundLast});
     Drawable lastBackground = a.getDrawable(0);
     a.recycle();
     return lastBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getMiddleBackground(Context context) {
-    TypedArray a = context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackground});
+  private Drawable getMiddleBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+            .getTheme()
+            .obtainStyledAttributes(
+                item.isActionable()
+                    ? new int[] {R.attr.sudItemBackground}
+                    : new int[] {R.attr.sudNonActionableItemBackground});
     Drawable middleBackground = a.getDrawable(0);
     a.recycle();
     return middleBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getSingleBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundSingle});
+  private Drawable getSingleBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+            .getTheme()
+            .obtainStyledAttributes(
+                item.isActionable()
+                    ? new int[] {R.attr.sudItemBackgroundSingle}
+                    : new int[] {R.attr.sudNonActionableItemBackgroundSingle});
     Drawable singleBackground = a.getDrawable(0);
     a.recycle();
     return singleBackground;
@@ -127,7 +149,19 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
     return conerRadius;
   }
 
+  private boolean isFirstItemOfGroup(int position) {
+    return position == 0 || getItem(position - 1).isGroupDivider();
+  }
+
+  private boolean isLastItemOfGroup(int position) {
+    return position == getCount() - 1 || getItem(position + 1).isGroupDivider();
+  }
+
   public void updateBackground(View convertView, int position) {
+    if (getItem(position).isGroupDivider()) {
+      return;
+    }
+
     float groupCornerRadius =
         PartnerConfigHelper.get(convertView.getContext())
             .getDimension(convertView.getContext(), PartnerConfig.CONFIG_ITEMS_GROUP_CORNER_RADIUS);
@@ -137,14 +171,15 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
     Drawable backgroundDrawable = null;
     GradientDrawable background = null;
 
-    if (position == 0 && getCount() == 1) {
-      backgroundDrawable = getSingleBackground(convertView.getContext());
-    } else if (position == 0) {
-      backgroundDrawable = getFirstBackground(convertView.getContext());
-    } else if (position == getCount() - 1) {
-      backgroundDrawable = getLastBackground(convertView.getContext());
+    // TODO add test case in updateBackground for list item to get background for Item
+    if (isFirstItemOfGroup(position) && isLastItemOfGroup(position)) {
+      backgroundDrawable = getSingleBackground(convertView.getContext(), position);
+    } else if (isFirstItemOfGroup(position)) {
+      backgroundDrawable = getFirstBackground(convertView.getContext(), position);
+    } else if (isLastItemOfGroup(position)) {
+      backgroundDrawable = getLastBackground(convertView.getContext(), position);
     } else {
-      backgroundDrawable = getMiddleBackground(convertView.getContext());
+      backgroundDrawable = getMiddleBackground(convertView.getContext(), position);
     }
     // TODO add test case for list item group corner partner config
     if (drawable instanceof LayerDrawable && ((LayerDrawable) drawable).getNumberOfLayers() >= 2) {
@@ -161,10 +196,10 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
     if (backgroundDrawable instanceof GradientDrawable) {
       float topCornerRadius = cornerRadius;
       float bottomCornerRadius = cornerRadius;
-      if (position == 0) {
+      if (isFirstItemOfGroup(position)) {
         topCornerRadius = groupCornerRadius;
       }
-      if (position == getCount() - 1) {
+      if (isLastItemOfGroup(position)) {
         bottomCornerRadius = groupCornerRadius;
       }
       background = (GradientDrawable) backgroundDrawable;
@@ -188,8 +223,7 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
   public View getView(int position, View convertView, ViewGroup parent) {
 
     // TODO  when getContext is not activity context then fallback to out suw behavior
-    if (PartnerConfigHelper.isGlifExpressiveEnabled(parent.getContext())
-        && Build.VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM) {
+    if (PartnerConfigHelper.isGlifExpressiveEnabled(parent.getContext())) {
       IItem item = getItem(position);
       LinearLayout linearLayout = null;
       // The ListView can not handle the margin for the child view. So we need to use the
@@ -211,6 +245,7 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
       }
       updateBackground(convertView, position);
       item.onBindView(convertView);
+      updateMargin(convertView);
       return linearLayout;
     } else {
       IItem item = getItem(position);
@@ -221,6 +256,34 @@ public class ItemAdapter extends BaseAdapter implements ItemHierarchy.Observer {
       item.onBindView(convertView);
       return convertView;
     }
+  }
+
+  private void updateMargin(View view) {
+    // If the item view is inside a recycler layout or list layout with attribute
+    // shouldApplyAdditionalMargin, it needs to adjust the
+    // layout margin start/end here to align other component activity margin. If it is not
+    // inside a recycler layout or list layout with attribute shouldApplyAdditionalMargin, it
+    // will be adjusted by each activity themselves.
+    if (shouldApplyAdditionalMargin()) {
+      ItemStyler.applyPartnerCustomizationLayoutMarginStyle(view);
+    } else {
+      resetMarginStartEnd(view);
+    }
+  }
+
+  private boolean shouldApplyAdditionalMargin() {
+    if (listView instanceof StickyHeaderListView stickyHeaderListView) {
+      return stickyHeaderListView.shouldApplyAdditionalMargin();
+    }
+    return false;
+  }
+
+  private void resetMarginStartEnd(View itemView) {
+    ViewGroup.MarginLayoutParams layoutParams =
+        (ViewGroup.MarginLayoutParams) itemView.getLayoutParams();
+    layoutParams.setMarginStart(0);
+    layoutParams.setMarginEnd(0);
+    itemView.setLayoutParams(layoutParams);
   }
 
   @Override

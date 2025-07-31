@@ -16,7 +16,6 @@
 
 package com.google.android.setupdesign.items;
 
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Rect;
@@ -31,10 +30,13 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.setupcompat.partnerconfig.PartnerConfig;
 import com.google.android.setupcompat.partnerconfig.PartnerConfigHelper;
 import com.google.android.setupdesign.R;
+import com.google.android.setupdesign.util.ItemStyler;
+import com.google.android.setupdesign.view.HeaderRecyclerView;
 
 /**
  * An adapter used with RecyclerView to display an {@link ItemHierarchy}. The item hierarchy used to
@@ -68,6 +70,7 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
   @VisibleForTesting public final boolean applyPartnerHeavyThemeResource;
   @VisibleForTesting public final boolean useFullDynamicColor;
   private OnItemSelectedListener listener;
+  private RecyclerView recyclerView = null;
 
   public RecyclerItemAdapter(ItemHierarchy hierarchy) {
     this(hierarchy, false);
@@ -85,6 +88,10 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
     this.useFullDynamicColor = useFullDynamicColor;
     itemHierarchy = hierarchy;
     itemHierarchy.registerObserver(this);
+  }
+
+  public void setRecyclerView(RecyclerView recyclerView) {
+    this.recyclerView = recyclerView;
   }
 
   /**
@@ -174,36 +181,53 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
     return viewHolder;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getFirstBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundFirst});
+  private Drawable getFirstBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+        .getTheme()
+        .obtainStyledAttributes(
+            item.isActionable()
+                ? new int[] {R.attr.sudItemBackgroundFirst}
+                : new int[] {R.attr.sudNonActionableItemBackgroundFirst});
     Drawable firstBackground = a.getDrawable(0);
     a.recycle();
     return firstBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getLastBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundLast});
+  private Drawable getLastBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+        .getTheme()
+        .obtainStyledAttributes(
+            item.isActionable()
+                ? new int[] {R.attr.sudItemBackgroundLast}
+                : new int[] {R.attr.sudNonActionableItemBackgroundLast});
     Drawable lastBackground = a.getDrawable(0);
     a.recycle();
     return lastBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getMiddleBackground(Context context) {
-    TypedArray a = context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackground});
+  private Drawable getMiddleBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+        .getTheme()
+        .obtainStyledAttributes(
+            item.isActionable()
+                ? new int[] {R.attr.sudItemBackground}
+                : new int[] {R.attr.sudNonActionableItemBackground});
     Drawable middleBackground = a.getDrawable(0);
     a.recycle();
     return middleBackground;
   }
 
-  @TargetApi(VERSION_CODES.VANILLA_ICE_CREAM)
-  private Drawable getSingleBackground(Context context) {
-    TypedArray a =
-        context.getTheme().obtainStyledAttributes(new int[] {R.attr.sudItemBackgroundSingle});
+  private Drawable getSingleBackground(Context context, int position) {
+    IItem item = getItem(position);
+    TypedArray a = context
+        .getTheme()
+        .obtainStyledAttributes(
+            item.isActionable()
+                ? new int[] {R.attr.sudItemBackgroundSingle}
+                : new int[] {R.attr.sudNonActionableItemBackgroundSingle});
     Drawable singleBackground = a.getDrawable(0);
     a.recycle();
     return singleBackground;
@@ -217,8 +241,19 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
     return conerRadius;
   }
 
+  private boolean isFirstItemOfGroup(int position) {
+    return position == 0 || getItem(position - 1).isGroupDivider();
+  }
+
+  private boolean isLastItemOfGroup(int position) {
+    return position == getItemCount() - 1 || getItem(position + 1).isGroupDivider();
+  }
+
   public void updateBackground(View view, int position) {
     if (TAG_NO_BACKGROUND.equals(view.getTag())) {
+      return;
+    }
+    if (getItem(position).isGroupDivider()) {
       return;
     }
     float groupCornerRadius =
@@ -232,23 +267,24 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
       Drawable backgroundDrawable = null;
       GradientDrawable background = null;
 
-      if (position == 0 && getItemCount() == 1) {
-        backgroundDrawable = getSingleBackground(view.getContext());
-      } else if (position == 0) {
-        backgroundDrawable = getFirstBackground(view.getContext());
-      } else if (position == getItemCount() - 1) {
-        backgroundDrawable = getLastBackground(view.getContext());
+      // TODO add test case in updateBackground for list item to get background for Item
+      if (isFirstItemOfGroup(position) && isLastItemOfGroup(position)) {
+        backgroundDrawable = getSingleBackground(view.getContext(), position);
+      } else if (isFirstItemOfGroup(position)) {
+        backgroundDrawable = getFirstBackground(view.getContext(), position);
+      } else if (isLastItemOfGroup(position)) {
+        backgroundDrawable = getLastBackground(view.getContext(), position);
       } else {
-        backgroundDrawable = getMiddleBackground(view.getContext());
+        backgroundDrawable = getMiddleBackground(view.getContext(), position);
       }
 
       if (backgroundDrawable instanceof GradientDrawable) {
         float topCornerRadius = cornerRadius;
         float bottomCornerRadius = cornerRadius;
-        if (position == 0) {
+        if (isFirstItemOfGroup(position)) {
           topCornerRadius = groupCornerRadius;
         }
-        if (position == getItemCount() - 1) {
+        if (isLastItemOfGroup(position)) {
           bottomCornerRadius = groupCornerRadius;
         }
         background = (GradientDrawable) backgroundDrawable;
@@ -265,6 +301,10 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
             });
         final Drawable[] layers = {background, clickDrawable};
         view.setBackgroundDrawable(new PatchedLayerDrawable(layers));
+        if (Build.VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
+          view.setClipToOutline(true);
+          view.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
+        }
       }
     }
   }
@@ -274,12 +314,43 @@ public class RecyclerItemAdapter extends RecyclerView.Adapter<ItemViewHolder>
     final IItem item = getItem(position);
     holder.setEnabled(item.isEnabled());
     holder.setItem(item);
+    if (holder.isRecyclable() != item.isRecyclable()) {
+      holder.setIsRecyclable(item.isRecyclable());
+    }
     // TODO  when getContext is not activity context then fallback to out suw behavior
-    if (PartnerConfigHelper.isGlifExpressiveEnabled(holder.itemView.getContext())
-        && Build.VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM) {
+    if (PartnerConfigHelper.isGlifExpressiveEnabled(holder.itemView.getContext())) {
       updateBackground(holder.itemView, position);
+      updateMargin(holder.itemView);
     }
     item.onBindView(holder.itemView);
+  }
+
+  private void updateMargin(View view) {
+    // If the item view is inside a recycler layout or list layout with attribute
+    // shouldApplyAdditionalMargin, it needs to adjust the
+    // layout margin start/end here to align other component activity margin. If it is not
+    // inside a recycler layout or list layout with attribute shouldApplyAdditionalMargin, it
+    // will be adjusted by each activity themselves.
+    if (shouldApplyAdditionalMargin()) {
+      ItemStyler.applyPartnerCustomizationLayoutMarginStyle(view);
+    } else {
+      resetMarginStartEnd(view);
+    }
+  }
+
+  private boolean shouldApplyAdditionalMargin() {
+    if (recyclerView instanceof HeaderRecyclerView headerRecyclerView) {
+      return headerRecyclerView.shouldApplyAdditionalMargin();
+    }
+    return false;
+  }
+
+  private void resetMarginStartEnd(View itemView) {
+    ViewGroup.MarginLayoutParams layoutParams =
+        (ViewGroup.MarginLayoutParams) itemView.getLayoutParams();
+    layoutParams.setMarginStart(0);
+    layoutParams.setMarginEnd(0);
+    itemView.setLayoutParams(layoutParams);
   }
 
   @Override

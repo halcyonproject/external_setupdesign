@@ -31,14 +31,34 @@ import androidx.annotation.ColorInt;
 import androidx.annotation.Nullable;
 import com.google.android.setupcompat.partnerconfig.PartnerConfigHelper;
 import com.google.android.setupdesign.R;
+import com.google.android.setupdesign.span.LinkSpan;
 import com.google.android.setupdesign.util.ItemStyler;
 import com.google.android.setupdesign.util.LayoutStyler;
+import com.google.android.setupdesign.view.RichTextView;
 
 /**
  * Definition of an item in an {@link ItemHierarchy}. An item is usually defined in XML and inflated
  * using {@link ItemInflater}.
  */
-public class Item extends AbstractItem {
+public class Item extends AbstractItem implements LinkSpan.OnLinkClickListener {
+
+  /**
+   * Listener that is invoked when a link span is clicked in summary RichTextView.
+   * If the containing view of this span implements this interface, this will be invoked when the
+   * link is clicked.
+   * @apiNote Make sure to use RichTextView for the textViews wherever Linking of text is expected.
+   * This OnLinkClickListener can be extended to Title TextViews based on use case.
+   */
+  public interface OnItemTextLinkClickListener {
+
+    /**
+     * Called when a link has been clicked.
+     *
+     * @param span The span that was clicked.
+     * @return True if the click was handled, stopping further propagation of the click event.
+     */
+    boolean onItemTextLinkClicked(LinkSpan span);
+  }
 
   private boolean enabled = true;
   @Nullable private Drawable icon;
@@ -46,6 +66,8 @@ public class Item extends AbstractItem {
   @Nullable private CharSequence summary;
   @Nullable private CharSequence title;
   @Nullable private CharSequence contentDescription;
+  @Nullable private Boolean isClickable;
+  @Nullable private OnItemTextLinkClickListener itemTextLinkClickListener;
   private boolean visible = true;
   @ColorInt private int iconTint = Color.TRANSPARENT;
   private int iconGravity = Gravity.CENTER_VERTICAL;
@@ -76,6 +98,9 @@ public class Item extends AbstractItem {
   }
 
   public void setEnabled(boolean enabled) {
+    if (this.enabled == enabled) {
+      return;
+    }
     this.enabled = enabled;
     notifyItemChanged();
   }
@@ -113,6 +138,14 @@ public class Item extends AbstractItem {
     this.iconGravity = iconGravity;
   }
 
+  public Boolean getClickable() {
+    return isClickable;
+  }
+
+  public void setClickable(Boolean isClickable) {
+    this.isClickable = isClickable;
+  }
+
   public int getIconGravity() {
     return iconGravity;
   }
@@ -135,6 +168,10 @@ public class Item extends AbstractItem {
   @Nullable
   public CharSequence getSummary() {
     return summary;
+  }
+
+  public void setOnItemTextLinkClickListener(@Nullable OnItemTextLinkClickListener itemTextLinkClickListener) {
+    this.itemTextLinkClickListener = itemTextLinkClickListener;
   }
 
   public void setTitle(@Nullable CharSequence title) {
@@ -186,11 +223,16 @@ public class Item extends AbstractItem {
   public void onBindView(View view) {
     TextView label = (TextView) view.findViewById(R.id.sud_items_title);
     label.setText(getTitle());
-
+    if (isClickable != null) {
+      view.setClickable(isClickable);
+    }
     TextView summaryView = (TextView) view.findViewById(R.id.sud_items_summary);
     CharSequence summary = getSummary();
     if (hasSummary(summary)) {
       summaryView.setText(summary);
+      if (summaryView instanceof RichTextView tv) {
+        tv.setOnLinkClickListener(this);
+      }
       summaryView.setVisibility(View.VISIBLE);
     } else {
       summaryView.setVisibility(View.GONE);
@@ -229,10 +271,10 @@ public class Item extends AbstractItem {
     // If the item view is a header layout, it doesn't need to adjust the layout padding start/end
     // here. It will be adjusted by HeaderMixin.
     // TODO: Add partner resource enable check
-    if (!(this instanceof ExpandableSwitchItem)
-        && view.getId() != R.id.sud_layout_header
-        && !(PartnerConfigHelper.isGlifExpressiveEnabled(view.getContext()))) {
-      LayoutStyler.applyPartnerCustomizationLayoutPaddingStyle(view);
+    if (!(this instanceof ExpandableSwitchItem) && view.getId() != R.id.sud_layout_header) {
+      if (!PartnerConfigHelper.isGlifExpressiveEnabled(view.getContext())) {
+        LayoutStyler.applyPartnerCustomizationLayoutPaddingStyle(view);
+      }
     }
     ItemStyler.applyPartnerCustomizationItemStyle(view);
   }
@@ -246,4 +288,13 @@ public class Item extends AbstractItem {
     iconView.setImageState(icon.getState(), false /* merge */);
     iconView.setImageLevel(icon.getLevel());
   }
+
+  @Override
+  public boolean onLinkClick(LinkSpan span) {
+    if (itemTextLinkClickListener != null) {
+      return itemTextLinkClickListener.onItemTextLinkClicked(span);
+    }
+    return false;
+  }
+
 }

@@ -16,6 +16,9 @@
 
 package com.google.android.setupdesign.template;
 
+import android.annotation.TargetApi;
+import android.os.Build.VERSION_CODES;
+import android.os.PersistableBundle;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.InflateException;
@@ -40,9 +43,22 @@ public class FloatingBackButtonMixin implements Mixin {
   private final TemplateLayout templateLayout;
   private static final String TAG = "FloatingBackButtonMixin";
 
+  @VisibleForTesting static final String KEY_BACK_BUTTON_ON_CLICK_COUNT = "BackButton_onClickCount";
+
   @Nullable private OnClickListener listener;
 
   @VisibleForTesting boolean tryInflatingBackButton = false;
+
+  private BackButtonListener backButtonListener;
+
+  private int clickCount = 0;
+
+  /** Interface definition for a callback to be invoked. */
+  public interface BackButtonListener {
+
+    /** Called when the back button has been clicked. */
+    void onBackPressed();
+  }
 
   /**
    * A {@link Mixin} for setting and getting the back button.
@@ -73,8 +89,22 @@ public class FloatingBackButtonMixin implements Mixin {
     final Button backbutton = getBackButton();
     if (backbutton != null) {
       this.listener = listener;
-      backbutton.setOnClickListener(listener);
+      backbutton.setOnClickListener(
+          v -> {
+            if (listener != null) {
+              listener.onClick(v);
+              clickCount++;
+            }
+
+            if (backButtonListener != null) {
+              backButtonListener.onBackPressed();
+            }
+          });
     }
+  }
+
+  public void setOnBackPressedCallback(BackButtonListener buttonEventListener) {
+    this.backButtonListener = buttonEventListener;
   }
 
   /** Tries to apply the partner customization to the back button. */
@@ -144,5 +174,20 @@ public class FloatingBackButtonMixin implements Mixin {
   /** Gets the {@link OnClickListener} of the back button. */
   public OnClickListener getOnClickListener() {
     return this.listener;
+  }
+
+  public BackButtonListener getBackButtonListener() {
+    return this.backButtonListener;
+  }
+
+  /**
+   * Returns back button related metrics bundle for PartnerCustomizationLayout to log to
+   * SetupWizard.
+   */
+  @TargetApi(VERSION_CODES.Q)
+  public PersistableBundle getMetrics() {
+    PersistableBundle bundle = new PersistableBundle();
+    bundle.putInt(KEY_BACK_BUTTON_ON_CLICK_COUNT, clickCount);
+    return bundle;
   }
 }
